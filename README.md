@@ -28,9 +28,15 @@ file3.MTS
 on seperate lines. Empty lines or lines, which do not resolve to a file where
 a stat call succeeds, are ignored.
 
+Compile with
+
+```
   gcc -Wall concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
+```
 
 Use with:
 
+```
   concatfs path-to-source-dir path-to-target-dir [fuse-mount options]
+```
 
