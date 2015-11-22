@@ -448,8 +448,6 @@ int main(int argc, char **argv)
 			 cwd, argv[1]);
 	}
 
-	fprintf(stderr, "Using src_dir = %s\n", src_dir);
-
 	pthread_mutex_init(&the_lock, NULL);
 
 	char ** argv_ = (char**) calloc(argc, sizeof(char*));
