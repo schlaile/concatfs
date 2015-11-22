@@ -296,7 +296,11 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 
 static int is_concatfs_file(const char * path)
 {
-	return (strstr(path, "-concat-") != 0);
+	char fpath[PATH_MAX];
+
+	strncpy(fpath, path, sizeof(fpath));
+
+	return (strstr(basename(fpath), "-concat-") != 0);
 }
 
 static int concatfs_readlink(const char *path, char *link, size_t size)
@@ -594,6 +598,41 @@ static int concatfs_utime(const char *path, struct utimbuf * buf)
 	return rv;
 }
 
+static int concatfs_access(const char *path, int mask)
+{
+	int rv;
+	char fpath[PATH_MAX];
+   
+	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
+    
+	rv = access(fpath, mask);
+    
+	if (rv < 0) {
+		return -errno;
+	}
+    
+	return rv;
+}
+
+static int concatfs_create(
+	const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	int fd = 0;
+	char fpath[PATH_MAX];
+   
+	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
+    
+	fd = creat(fpath, mode);
+    
+	if (fd < 0) {
+		return -errno;
+	}
+
+	fi->fh = fd;
+    
+	return 0;
+}
+
 
 static struct fuse_operations concatfs_oper = {
 	.getattr	= concatfs_getattr,
@@ -614,6 +653,8 @@ static struct fuse_operations concatfs_oper = {
 	.write          = concatfs_write,
 	.release        = concatfs_release,
 	.readdir	= concatfs_readdir,
+	.access         = concatfs_access,
+	.create         = concatfs_create,
 };
 
 static void usage()
