@@ -9,22 +9,26 @@ contained files.
 
 e.g.
 
+```
   file1.MTS
   file2.MTS
   file3.MTS
 
   bigmovie-concat-file.MTS
+```
 
 contents of bigmovie-concat-file.MTS:
 
-  file1.MTS
-  file2.MTS
-  file3.MTS
+```
+file1.MTS
+file2.MTS
+file3.MTS
+```
 
 on seperate lines. Empty lines or lines, which do not resolve to a file where
 a stat call succeeds, are ignored.
 
-  gcc -Wall poc_concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
+  gcc -Wall concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
 
 Use with:
 

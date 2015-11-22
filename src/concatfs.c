@@ -27,7 +27,7 @@
   on seperate lines. Empty lines or lines, which do not resolve to a file where
   a stat call succeeds, are ignored.
 
-  gcc -Wall poc_concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
+  gcc -Wall concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
 */
 
 #define FUSE_USE_VERSION 26
