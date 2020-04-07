@@ -28,6 +28,12 @@ file3.MTS
 on seperate lines. Empty lines or lines, which do not resolve to a file where
 a stat call succeeds, are ignored.
 
+You will need to install libfuse-dev to compile:
+
+```
+sudo apt-get install libfuse-dev
+```
+
 Compile with
 
 ```
