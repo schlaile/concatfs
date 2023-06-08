@@ -44,6 +44,17 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <stdbool.h>
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+#define OFF_T_MAX ((((off_t)1 << (sizeof(off_t) * 8 - 2)) - 1) * 2 + 1)
+
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define CLAMP(x, m, M) (MIN((M), MAX((x), (m))))
 
 static char src_dir[PATH_MAX];
 
@@ -51,6 +62,7 @@ struct chunk {
 	struct chunk * next;
 
 	int fd;
+	off_t startOffset;
 	off_t fsize;
 };
 
@@ -136,13 +148,67 @@ static struct concat_file * open_files_erase(int fd)
 	return rv;
 }
 
+
+// tries to parse lines formatted like [path]:[start offset]:[length], with both [start offset] and :[length] being optional
+// regex equivalent: ^(?<path>[^:]+)(:(?<startOffset>\d+)?(:(?<length>\d+)?)?)?$
+static bool try_parse_line_offsets(char* line, off_t* startOffset, off_t* length)
+{
+	struct stat stbuf;
+	bool statOk = false;
+	char* offsetsLineStart;
+	char t;
+	off_t s = -1;
+	off_t l = OFF_T_MAX;
+
+	if (line == NULL || line[0] == '\0') return false;
+
+	// find the point between path and offsets
+	offsetsLineStart = strchr(line, ':');
+
+	// cut the string into "two" strings (path \0 offsets) if needed, and stat() the path
+	if (offsetsLineStart != NULL)
+	{
+		t = *offsetsLineStart;
+		*offsetsLineStart = '\0';
+	}
+	statOk = (stat(line, &stbuf) == 0);
+	/*if (offsetsLineStart != NULL)
+	{
+		// restore the string
+		*offsetsLineStart = t;
+	}*/
+	if (!statOk) return false;
+	if (stbuf.st_size < 1) return false; // can't really use files with 0 size
+
+	// try to parse the numbers
+	if (offsetsLineStart != NULL)
+	{
+		const char* lengthLineStart;
+
+		// read the start offset
+		sscanf(offsetsLineStart + 1, "%jd", &s);
+		// find the length number and parse it
+		lengthLineStart = strchr(offsetsLineStart + 1, ':');
+		if (lengthLineStart != NULL)
+		{
+			sscanf(lengthLineStart + 1, "%jd", &l);
+		}
+	}
+
+	s = CLAMP(s, 0, stbuf.st_size - 1);
+	l = CLAMP(l, 1, stbuf.st_size - s);
+
+	*startOffset = s;
+	*length = l;
+	return true;
+}
+
 static struct concat_file * open_concat_file(int fd, const char * path)
 {
 	struct concat_file * rv = 0;
 	char bpath[PATH_MAX+1];
 	char fpath[PATH_MAX+1];
 	char * base_dir;
-	struct stat stbuf;
 	struct chunk * c = 0;
 	
 	FILE * fp;
@@ -171,6 +237,8 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 	while (fgets(fpath, sizeof(fpath), fp)) {
 		char tpath[PATH_MAX];
 		struct chunk * c_n;
+		off_t startOffset = 0;
+		off_t length = 0;
 
 		fpath[strlen(fpath) - 1] = 0;
 
@@ -179,16 +247,15 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 		} else {
 			snprintf(tpath, sizeof(tpath), "%s/%s",base_dir, fpath);
 		}
-		if (stat(tpath, &stbuf) == 0) {
-			rv->fsize += stbuf.st_size;
-		} else {
-			continue;
-		}
+
+		if (!try_parse_line_offsets(tpath, &startOffset, &length)) continue;
+		rv->fsize += length;
 
 		if (fd >= 0) {
 			c_n = (struct chunk *) calloc(sizeof(struct chunk), 1);
 
-			c_n->fsize = stbuf.st_size;
+			c_n->startOffset = startOffset;
+			c_n->fsize = length;
 			c_n->fd = open(tpath, O_RDONLY);
 
 			if (c) {
@@ -266,7 +333,8 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 	}
 
 	for (; c && count > c->fsize - offset; c = c->next) {
-		ssize_t rv = pread(c->fd, buf, c->fsize - offset, offset);
+		ssize_t rv;
+		rv = pread(c->fd, buf, c->fsize - offset, offset + c->startOffset);
 
 		if (rv == c->fsize - offset) {
 			buf += rv;
@@ -282,7 +350,8 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 	}
 	
 	if (c && count > 0) {
-		ssize_t rv = pread(c->fd, buf, count, offset);
+		ssize_t rv;
+		rv = pread(c->fd, buf, count, offset + c->startOffset);
 
 		if (rv < 0) {
 			return -errno;
